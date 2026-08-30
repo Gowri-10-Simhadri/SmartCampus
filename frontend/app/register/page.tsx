@@ -3,29 +3,33 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
     setLoading(true);
     setError("");
+    setSuccess("");
 
     try {
       const response = await fetch(
-        "http://localhost:5000/api/auth/login",
+        "http://localhost:5000/api/auth/register",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            name,
             email,
             password,
           }),
@@ -35,26 +39,18 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        setError(data.message || "Login failed");
+        setError(data.message || "Registration failed");
         setLoading(false);
         return;
       }
 
-      // Save login information
-      localStorage.setItem("token", data.token);
-      localStorage.setItem(
-        "user",
-        JSON.stringify(data.user)
-      );
+      setSuccess("Account created successfully! Redirecting to login...");
 
-      // Redirect according to user role
-      if (data.user.role === "admin") {
-        router.push("/admin");
-      } else {
-        router.push("/dashboard");
-      }
+      setTimeout(() => {
+        router.push("/login");
+      }, 1000);
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("Registration error:", err);
       setError("Unable to connect to the server.");
     } finally {
       setLoading(false);
@@ -82,32 +78,54 @@ export default function LoginPage() {
           boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
         }}
       >
-        <div style={{ marginBottom: "30px" }}>
-          <h1
-            style={{
-              fontSize: "32px",
-              marginBottom: "8px",
-            }}
-          >
-            Welcome back 👋
-          </h1>
+        <h1
+          style={{
+            fontSize: "32px",
+            marginBottom: "8px",
+          }}
+        >
+          Create Account 🎓
+        </h1>
 
-          <p
-            style={{
-              color: "#64748b",
-            }}
-          >
-            Login to your SmartCampus account
-          </p>
-        </div>
+        <p
+          style={{
+            color: "#64748b",
+            marginBottom: "30px",
+          }}
+        >
+          Register for your SmartCampus account
+        </p>
 
-        <form onSubmit={handleLogin}>
-          {/* Email */}
-          <div
-            style={{
-              marginBottom: "20px",
-            }}
-          >
+        <form onSubmit={handleRegister}>
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: 600,
+              }}
+            >
+              Name
+            </label>
+
+            <input
+              type="text"
+              placeholder="Enter your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: "10px",
+                border: "1px solid #dbe2ea",
+                fontSize: "15px",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
             <label
               style={{
                 display: "block",
@@ -135,12 +153,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* Password */}
-          <div
-            style={{
-              marginBottom: "20px",
-            }}
-          >
+          <div style={{ marginBottom: "20px" }}>
             <label
               style={{
                 display: "block",
@@ -153,10 +166,11 @@ export default function LoginPage() {
 
             <input
               type="password"
-              placeholder="Enter your password"
+              placeholder="Create a password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              minLength={6}
               style={{
                 width: "100%",
                 padding: "14px",
@@ -168,7 +182,6 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* Error */}
           {error && (
             <div
               style={{
@@ -183,7 +196,20 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Login Button */}
+          {success && (
+            <div
+              style={{
+                background: "#dcfce7",
+                color: "#166534",
+                padding: "12px",
+                borderRadius: "10px",
+                marginBottom: "20px",
+              }}
+            >
+              {success}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -200,28 +226,12 @@ export default function LoginPage() {
               opacity: loading ? 0.7 : 1,
             }}
           >
-            {loading ? "Logging in..." : "Login"}
+            {loading ? "Creating account..." : "Register"}
           </button>
         </form>
-        <button
-  type="button"
-  onClick={() => router.push("/register")}
-  style={{
-    width: "100%",
-    marginTop: "10px",
-    padding: "12px",
-    border: "none",
-    background: "transparent",
-    color: "#2563eb",
-    cursor: "pointer",
-  }}
->
-  Don't have an account? Register
-</button>
 
-        {/* Back to Home */}
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/login")}
           style={{
             width: "100%",
             marginTop: "15px",
@@ -232,7 +242,7 @@ export default function LoginPage() {
             cursor: "pointer",
           }}
         >
-          ← Back to Home
+          Already have an account? Login
         </button>
       </div>
     </main>
