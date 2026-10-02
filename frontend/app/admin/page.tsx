@@ -1,1372 +1,621 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Navbar from "../../components/Navbar";
+import MobileBottomNav from "../../components/MobileBottomNav";
+import ComplaintDetailModal, { ComplaintDetail } from "../../components/ComplaintDetailModal";
+import FilterBottomSheet from "../../components/FilterBottomSheet";
+import { useAuth } from "../../context/AuthContext";
+import { api } from "../../lib/api";
+import {
+  Shield,
+  Activity,
+  Layers,
+  Search,
+  Filter,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  RotateCcw,
+  BarChart3,
+  TrendingUp,
+  MapPin,
+  Tag,
+  User,
+  Building,
+  RefreshCw,
+  ChevronRight,
+  ExternalLink,
+} from "lucide-react";
 
-type Complaint = {
-  _id: string;
-  title: string;
-  description: string;
-  category: string;
-  status: string;
-  createdAt: string;
-  updatedAt?: string;
-  student?: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-};
-
-type User = {
-  name: string;
-  email: string;
-  role: string;
-};
-
-const API_URL = "http://localhost:5000";
-
-const statuses = ["Pending", "In Progress", "Resolved"];
+interface AdminStats {
+  total: number;
+  pending: number;
+  underReview: number;
+  inProgress: number;
+  resolved: number;
+  rejected: number;
+  resolutionRate: number;
+  categoryStats: { _id: string; count: number }[];
+  priorityStats: { _id: string; count: number }[];
+  recentActivity: ComplaintDetail[];
+}
 
 export default function AdminPage() {
   const router = useRouter();
+  const { user, isAuthenticated, isLoading, isAdmin } = useAuth();
 
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [activeView, setActiveView] = useState<"overview" | "complaints">("overview");
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [complaints, setComplaints] = useState<ComplaintDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
-  const [error, setError] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [priorityFilter, setPriorityFilter] = useState("All");
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintDetail | null>(null);
 
   useEffect(() => {
-    checkAdminAndLoad();
-  }, []);
-
-  // --------------------------------------------------
-  // CHECK LOGIN + ADMIN ROLE
-  // --------------------------------------------------
-
-  async function checkAdminAndLoad() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const token = localStorage.getItem("token");
-      const savedUser = localStorage.getItem("user");
-
-      if (!token || !savedUser) {
+    if (!isLoading) {
+      if (!isAuthenticated) {
         router.push("/login");
         return;
       }
-
-      let user: User;
-
-      try {
-        user = JSON.parse(savedUser);
-      } catch {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        router.push("/login");
-        return;
-      }
-
-      // IMPORTANT:
-      // Only admin users are allowed to open this page.
-      if (user.role?.toLowerCase() !== "admin") {
+      if (!isAdmin) {
         router.push("/dashboard");
         return;
       }
-
-      await fetchComplaints();
-    } catch (err) {
-      console.error("Admin page error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load admin portal."
-      );
-
-      setLoading(false);
+      loadAllAdminData();
     }
-  }
+  }, [isLoading, isAuthenticated, isAdmin, router, statusFilter, categoryFilter, priorityFilter]);
 
-  // --------------------------------------------------
-  // FETCH ALL COMPLAINTS
-  // --------------------------------------------------
-
-  async function fetchComplaints() {
+  const loadAllAdminData = async () => {
     try {
       setLoading(true);
-      setError("");
+      const [statsRes, complaintsRes] = await Promise.all([
+        api.admin.getStats(),
+        api.admin.getComplaints({
+          search: search.trim() || undefined,
+          status: statusFilter,
+          category: categoryFilter,
+          priority: priorityFilter,
+        }),
+      ]);
 
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        router.push("/login");
-        return;
+      if (statsRes.success) {
+        setStats(statsRes.stats);
       }
-
-      const response = await fetch(
-        `${API_URL}/api/admin/complaints`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      // DO NOT blindly call response.json()
-      // Backend may return HTML for a 404/500.
-      const contentType =
-        response.headers.get("content-type") || "";
-
-      if (!contentType.includes("application/json")) {
-        const text = await response.text();
-
-        console.error(
-          "Admin complaints API returned non-JSON:",
-          text
-        );
-
-        throw new Error(
-          `Admin API returned ${response.status} instead of JSON. ` +
-            `Check the backend route: GET /api/admin/complaints`
-        );
+      if (complaintsRes.success) {
+        setComplaints(complaintsRes.complaints || []);
       }
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.message || "Unable to load complaints."
-        );
-      }
-
-      setComplaints(data.complaints || []);
     } catch (err) {
-      console.error("Fetch complaints error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong while loading complaints."
-      );
+      console.error("Failed to load admin data:", err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }
+  };
 
-  // --------------------------------------------------
-  // UPDATE COMPLAINT STATUS
-  // --------------------------------------------------
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadAllAdminData();
+  };
 
-  async function updateStatus(id: string, status: string) {
-    if (updating) {
-      return;
-    }
-
-    try {
-      setUpdating(id);
-      setError("");
-
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-
-      console.log("Updating complaint:", {
-        id,
-        status,
-        url: `${API_URL}/api/admin/complaints/${id}/status`,
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    api.admin
+      .getComplaints({
+        search: search.trim() || undefined,
+        status: statusFilter,
+        category: categoryFilter,
+        priority: priorityFilter,
+      })
+      .then((res) => {
+        if (res.success) setComplaints(res.complaints || []);
       });
+  };
 
-      const response = await fetch(
-        `${API_URL}/api/admin/complaints/${id}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            status: status,
-          }),
-        }
-      );
+  const handleResetFilters = () => {
+    setSearch("");
+    setStatusFilter("All");
+    setCategoryFilter("All");
+    setPriorityFilter("All");
+    setFilterModalOpen(false);
+  };
 
-      // --------------------------------------------
-      // SAFELY READ BACKEND RESPONSE
-      // --------------------------------------------
-
-      const contentType =
-        response.headers.get("content-type") || "";
-
-      let data: any = null;
-
-      if (contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-
-        console.error(
-          "Status update returned non-JSON:",
-          text
-        );
-
-        if (response.status === 404) {
-          throw new Error(
-            "Status update API route was not found. " +
-              "Backend is missing: PUT /api/admin/complaints/:id/status"
-          );
-        }
-
-        if (response.status === 401) {
-          throw new Error(
-            "You are not authorized. Please logout and login again as admin."
-          );
-        }
-
-        if (response.status === 403) {
-          throw new Error(
-            "Access denied. Your account does not have admin permission."
-          );
-        }
-
-        if (response.status >= 500) {
-          throw new Error(
-            "Backend server error while updating the complaint. " +
-              "Check your backend terminal."
-          );
-        }
-
-        throw new Error(
-          `Server returned ${response.status} instead of JSON.`
-        );
-      }
-
-      // --------------------------------------------
-      // HANDLE JSON ERROR
-      // --------------------------------------------
-
-      if (!response.ok || !data?.success) {
-        throw new Error(
-          data?.message ||
-            data?.error ||
-            "Unable to update complaint status."
-        );
-      }
-
-      // --------------------------------------------
-      // UPDATE UI IMMEDIATELY
-      // --------------------------------------------
-
-      setComplaints((current) =>
-        current.map((complaint) =>
-          complaint._id === id
-            ? {
-                ...complaint,
-                status: status,
-                updatedAt: new Date().toISOString(),
-              }
-            : complaint
-        )
-      );
-
-      console.log(
-        `Complaint ${id} successfully changed to ${status}`
-      );
-    } catch (err) {
-      console.error("Update status error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to update complaint status."
-      );
-    } finally {
-      setUpdating(null);
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Resolved":
+        return {
+          bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          dot: "bg-emerald-500",
+        };
+      case "In Progress":
+        return {
+          bg: "bg-blue-50 text-blue-700 border-blue-200",
+          dot: "bg-blue-500",
+        };
+      case "Under Review":
+        return {
+          bg: "bg-purple-50 text-purple-700 border-purple-200",
+          dot: "bg-purple-500",
+        };
+      case "Rejected":
+        return {
+          bg: "bg-rose-50 text-rose-700 border-rose-200",
+          dot: "bg-rose-500",
+        };
+      default:
+        return {
+          bg: "bg-amber-50 text-amber-700 border-amber-200",
+          dot: "bg-amber-500",
+        };
     }
-  }
+  };
 
-  // --------------------------------------------------
-  // LOGOUT
-  // --------------------------------------------------
-
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-
-    router.push("/login");
-  }
-
-  // --------------------------------------------------
-  // STATISTICS
-  // --------------------------------------------------
-
-  const statistics = useMemo(() => {
-    return {
-      total: complaints.length,
-
-      pending: complaints.filter(
-        (c) => c.status === "Pending"
-      ).length,
-
-      progress: complaints.filter(
-        (c) => c.status === "In Progress"
-      ).length,
-
-      resolved: complaints.filter(
-        (c) => c.status === "Resolved"
-      ).length,
-    };
-  }, [complaints]);
-
-  // --------------------------------------------------
-  // SEARCH + FILTER
-  // --------------------------------------------------
-
-  const filteredComplaints = useMemo(() => {
-    return complaints.filter((complaint) => {
-      const text = search.toLowerCase().trim();
-
-      const matchesSearch =
-        complaint.title?.toLowerCase().includes(text) ||
-        complaint.description?.toLowerCase().includes(text) ||
-        complaint.category?.toLowerCase().includes(text) ||
-        complaint.student?.name
-          ?.toLowerCase()
-          .includes(text) ||
-        complaint.student?.email
-          ?.toLowerCase()
-          .includes(text);
-
-      const matchesFilter =
-        filter === "All" ||
-        complaint.status === filter;
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [complaints, search, filter]);
-
-  // --------------------------------------------------
-  // STATUS CSS
-  // --------------------------------------------------
-
-  function statusClass(status: string) {
-    if (status === "Resolved") {
-      return "admin-status resolved";
-    }
-
-    if (status === "In Progress") {
-      return "admin-status progress";
-    }
-
-    return "admin-status pending";
-  }
-
-  // --------------------------------------------------
-  // RENDER
-  // --------------------------------------------------
+  const activeFilterCount =
+    (statusFilter !== "All" ? 1 : 0) +
+    (categoryFilter !== "All" ? 1 : 0) +
+    (priorityFilter !== "All" ? 1 : 0);
 
   return (
-    <main className="admin-page">
-      <div className="admin-container">
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-24 md:pb-12 text-slate-900 selection:bg-blue-600 selection:text-white">
+      <Navbar />
 
-        {/* HEADER */}
-        <header className="admin-header">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Admin Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="admin-brand">
-              SMARTCAMPUS
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold tracking-wide uppercase mb-1">
+              <Shield className="w-3.5 h-3.5" />
+              Administrative Control Console
             </div>
-
-            <h1>Admin Control Center</h1>
-
-            <p>
-              Manage campus complaints and keep every issue
-              moving toward resolution.
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              Campus Facilities Portal
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Live MongoDB Atlas metrics, ticket routing, and status resolution
             </p>
           </div>
 
-          <div className="admin-header-actions">
+          <div className="flex items-center gap-2">
             <button
-              className="refresh-button"
-              onClick={fetchComplaints}
-              disabled={loading || updating !== null}
+              type="button"
+              onClick={handleRefresh}
+              className="p-3 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 shadow-sm transition-all touch-manipulation flex items-center gap-1.5 text-xs font-bold"
             >
-              ↻ Refresh
-            </button>
-
-            <button
-              className="logout-button"
-              onClick={logout}
-            >
-              Logout
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
+              <span className="hidden sm:inline">Refresh Data</span>
             </button>
           </div>
-        </header>
+        </div>
 
-        {/* ERROR */}
-        {error && (
-          <div className="admin-error">
-            ⚠️ {error}
+        {/* View Switcher Tabs */}
+        <div className="flex border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveView("overview")}
+            className={`py-3 px-5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeView === "overview"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Overview & Analytics</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView("complaints")}
+            className={`py-3 px-5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+              activeView === "complaints"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Manage Complaints ({complaints.length})</span>
+          </button>
+        </div>
+
+        {/* VIEW 1: OVERVIEW & ANALYTICS */}
+        {activeView === "overview" && (
+          <div className="space-y-6">
+            {/* 3D KPI Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 perspective-container">
+              {/* Card 1: Total */}
+              <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Total Complaints
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-slate-900 my-1">
+                  {stats?.total ?? (loading ? "--" : 0)}
+                </div>
+                <span className="text-[10px] text-slate-500 flex items-center gap-1 font-semibold">
+                  <Activity className="w-3 h-3 text-blue-600" />
+                  Live campus reports
+                </span>
+              </div>
+
+              {/* Card 2: Pending + Under Review */}
+              <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-amber-200/90 shadow-sm flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">
+                  Pending Review
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-amber-600 my-1">
+                  {(stats?.pending || 0) + (stats?.underReview || 0)}
+                </div>
+                <span className="text-[10px] text-amber-700 flex items-center gap-1 font-semibold">
+                  <span>Action required</span>
+                </span>
+              </div>
+
+              {/* Card 3: In Progress */}
+              <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-blue-200/90 shadow-sm flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">
+                  In Progress
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-blue-600 my-1">
+                  {stats?.inProgress ?? (loading ? "--" : 0)}
+                </div>
+                <span className="text-[10px] text-blue-700 flex items-center gap-1 font-semibold">
+                  <span>Technicians assigned</span>
+                </span>
+              </div>
+
+              {/* Card 4: Resolution Rate */}
+              <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200/90 shadow-sm flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
+                  Resolution Rate
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-emerald-600 my-1">
+                  {stats?.resolutionRate ?? (loading ? "--" : 0)}%
+                </div>
+                <span className="text-[10px] text-emerald-700 flex items-center gap-1 font-semibold">
+                  <span>{stats?.resolved || 0} tickets resolved</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Visual Breakdown Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Category Distribution Bar Chart */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Category Distribution
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Volume of campus tickets by domain
+                    </p>
+                  </div>
+                  <Tag className="w-5 h-5 text-blue-600" />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  {stats?.categoryStats && stats.categoryStats.length > 0 ? (
+                    stats.categoryStats.map((cat) => {
+                      const percentage =
+                        stats.total > 0
+                          ? Math.round((cat.count / stats.total) * 100)
+                          : 0;
+                      return (
+                        <div key={cat._id} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                            <span>{cat._id}</span>
+                            <span>
+                              {cat.count} ({percentage}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-8 text-xs text-slate-400">
+                      No category statistics available yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Flow Progress */}
+              <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Resolution Pipeline
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Pipeline state breakdown across campus
+                    </p>
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  {[
+                    { label: "Pending", count: stats?.pending || 0, color: "bg-amber-500" },
+                    { label: "Under Review", count: stats?.underReview || 0, color: "bg-purple-500" },
+                    { label: "In Progress", count: stats?.inProgress || 0, color: "bg-blue-500" },
+                    { label: "Resolved", count: stats?.resolved || 0, color: "bg-emerald-500" },
+                    { label: "Rejected", count: stats?.rejected || 0, color: "bg-rose-500" },
+                  ].map((pipe) => {
+                    const percentage =
+                      stats?.total && stats.total > 0
+                        ? Math.round((pipe.count / stats.total) * 100)
+                        : 0;
+                    return (
+                      <div key={pipe.label} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                          <span>{pipe.label}</span>
+                          <span>
+                            {pipe.count} ({percentage}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full ${pipe.color} rounded-full transition-all duration-500`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Link to Complaints */}
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveView("complaints")}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md transition-all active:scale-95"
+              >
+                <span>Jump to Complaint Management</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* HERO */}
-        <section className="admin-hero">
-          <div>
-            <span className="admin-eyebrow">
-              ● ADMINISTRATOR PORTAL
-            </span>
+        {/* VIEW 2: COMPLAINTS MANAGEMENT */}
+        {activeView === "complaints" && (
+          <div className="space-y-4">
+            {/* Search & Mobile Filter Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <form onSubmit={handleSearchSubmit} className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Search className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by title, location, or assigned staff..."
+                  className="w-full pl-10 pr-20 py-3 bg-white border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium shadow-sm"
+                />
+                <button
+                  type="submit"
+                  className="absolute inset-y-1.5 right-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                >
+                  Search
+                </button>
+              </form>
 
-            <h2>
-              Keep your campus
-              <br />
-              <span>running better.</span>
-            </h2>
-
-            <p>
-              Review complaints, monitor progress and resolve
-              student issues from one central dashboard.
-            </p>
-          </div>
-
-          <div className="admin-hero-icon">
-            ⚡
-          </div>
-        </section>
-
-        {/* STATISTICS */}
-        <section className="admin-stats">
-
-          <div className="admin-stat-card">
-            <div className="stat-top">
-              <span>Total Complaints</span>
-              <div className="stat-icon blue">
-                📋
-              </div>
+              {/* Mobile Filter Button */}
+              <button
+                type="button"
+                onClick={() => setFilterModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm active:scale-95 transition-all touch-manipulation relative"
+              >
+                <Filter className="w-4 h-4 text-blue-600" />
+                <span>Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
             </div>
 
-            <strong>{statistics.total}</strong>
-
-            <small>
-              All submitted complaints
-            </small>
-          </div>
-
-          <div className="admin-stat-card">
-            <div className="stat-top">
-              <span>Pending</span>
-              <div className="stat-icon orange">
-                ⏳
-              </div>
+            {/* Status Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs font-bold">
+              {["All", "Pending", "Under Review", "In Progress", "Resolved", "Rejected"].map(
+                (st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setStatusFilter(st)}
+                    className={`px-3.5 py-2 rounded-xl border transition-all whitespace-nowrap touch-manipulation active:scale-95 ${
+                      statusFilter === st
+                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {st}
+                  </button>
+                )
+              )}
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-2.5 py-2 text-xs font-semibold text-rose-600 hover:underline flex items-center gap-1 whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset
+                </button>
+              )}
             </div>
 
-            <strong>{statistics.pending}</strong>
-
-            <small>
-              Waiting for review
-            </small>
-          </div>
-
-          <div className="admin-stat-card">
-            <div className="stat-top">
-              <span>In Progress</span>
-              <div className="stat-icon purple">
-                🔧
-              </div>
-            </div>
-
-            <strong>{statistics.progress}</strong>
-
-            <small>
-              Currently being handled
-            </small>
-          </div>
-
-          <div className="admin-stat-card">
-            <div className="stat-top">
-              <span>Resolved</span>
-              <div className="stat-icon green">
-                ✓
-              </div>
-            </div>
-
-            <strong>{statistics.resolved}</strong>
-
-            <small>
-              Successfully completed
-            </small>
-          </div>
-
-        </section>
-
-        {/* MANAGEMENT */}
-        <section className="admin-management">
-
-          <div className="management-header">
-            <div>
-              <span className="small-label">
-                COMPLAINT MANAGEMENT
-              </span>
-
-              <h2>
-                All Student Complaints
-              </h2>
-
-              <p>
-                Review every campus issue and update its
-                current status.
-              </p>
-            </div>
-
-            <div className="complaint-count">
-              {filteredComplaints.length} complaints
-            </div>
-          </div>
-
-          {/* SEARCH + FILTER */}
-          <div className="admin-controls">
-
-            <div className="search-box">
-              🔎
-
-              <input
-                type="text"
-                placeholder="Search complaints, students or categories..."
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-              />
-            </div>
-
-            <select
-              value={filter}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
-              className="filter-select"
-            >
-              <option value="All">
-                All Statuses
-              </option>
-
-              <option value="Pending">
-                Pending
-              </option>
-
-              <option value="In Progress">
-                In Progress
-              </option>
-
-              <option value="Resolved">
-                Resolved
-              </option>
-            </select>
-
-          </div>
-
-          {/* COMPLAINT LIST */}
-          <div className="admin-list">
-
+            {/* Complaints List / Responsive Cards */}
             {loading ? (
-              <div className="admin-empty">
-                <div className="loading-spinner"></div>
-
-                <h3>
-                  Loading complaints...
-                </h3>
-
-                <p>
-                  Please wait while we fetch the latest
-                  complaints.
-                </p>
+              <div className="space-y-3 py-6">
+                {[1, 2, 3, 4].map((n) => (
+                  <div
+                    key={n}
+                    className="h-24 bg-white rounded-3xl border border-slate-100 p-4 animate-pulse flex items-center gap-4"
+                  >
+                    <div className="w-12 h-12 bg-slate-100 rounded-2xl" />
+                    <div className="flex-1 space-y-2">
+                      <div className="w-1/3 h-4 bg-slate-100 rounded" />
+                      <div className="w-1/2 h-3 bg-slate-100 rounded" />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ) : filteredComplaints.length === 0 ? (
-              <div className="admin-empty">
-                <div className="empty-icon">
+            ) : complaints.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/90 shadow-sm space-y-3">
+                <div className="w-16 h-16 rounded-3xl bg-blue-50 text-blue-500 flex items-center justify-center mx-auto text-3xl">
                   📭
                 </div>
-
-                <h3>
+                <h3 className="font-extrabold text-base text-slate-900">
                   No complaints found
                 </h3>
-
-                <p>
-                  Try changing your search or filter.
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Try adjusting your search criteria or resetting filters.
                 </p>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
+                >
+                  Reset Filters
+                </button>
               </div>
             ) : (
-              filteredComplaints.map((complaint) => (
-                <article
-                  className="admin-complaint-card"
-                  key={complaint._id}
-                >
-
-                  <div className="complaint-main">
-
-                    <div className="complaint-icon">
-                      {complaint.category ===
-                      "Electrical"
-                        ? "💡"
-                        : complaint.category ===
-                          "Water"
-                        ? "🚰"
-                        : complaint.category ===
-                          "Cleanliness"
-                        ? "🧹"
-                        : complaint.category ===
-                          "Internet"
-                        ? "🌐"
-                        : complaint.category ===
-                          "Infrastructure"
-                        ? "🏗️"
-                        : complaint.category ===
-                          "Classroom"
-                        ? "🏫"
-                        : complaint.category ===
-                          "Hostel"
-                        ? "🛏️"
-                        : complaint.category ===
-                          "Transportation"
-                        ? "🚌"
-                        : "📋"}
-                    </div>
-
-                    <div className="complaint-content">
-
-                      <div className="complaint-title-row">
-
-                        <div>
-                          <h3>
-                            {complaint.title}
-                          </h3>
-
-                          <div className="complaint-meta">
-
-                            <span>
-                              🏷️{" "}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                {complaints.map((complaint) => {
+                  const badge = getStatusBadge(complaint.status);
+                  return (
+                    <article
+                      key={complaint._id}
+                      onClick={() => setSelectedComplaint(complaint)}
+                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/5 transition-all cursor-pointer group flex flex-col justify-between touch-manipulation active:scale-[0.99]"
+                    >
+                      <div className="space-y-3">
+                        {/* Top Row: Ticket ID, Category & Status */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                              #{complaint._id.slice(-6).toUpperCase()}
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-500">
                               {complaint.category}
                             </span>
-
-                            <span>
-                              📅{" "}
-                              {new Date(
-                                complaint.createdAt
-                              ).toLocaleDateString(
-                                "en-IN"
-                              )}
-                            </span>
-
-                            <span>
-                              ID:{" "}
-                              {complaint._id.slice(
-                                -8
-                              )}
-                            </span>
-
                           </div>
-                        </div>
 
-                        <span
-                          className={statusClass(
-                            complaint.status
-                          )}
-                        >
-                          {complaint.status}
-                        </span>
-
-                      </div>
-
-                      <p className="complaint-description">
-                        {complaint.description}
-                      </p>
-
-                      {/* STUDENT */}
-                      <div className="student-info">
-
-                        <div className="student-avatar">
-                          {complaint.student?.name
-                            ?.charAt(0)
-                            .toUpperCase() || "S"}
-                        </div>
-
-                        <div>
-                          <strong>
-                            {complaint.student?.name ||
-                              "Unknown Student"}
-                          </strong>
-
-                          <span>
-                            {complaint.student?.email ||
-                              "No email available"}
+                          <span
+                            className={`text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full border ${badge.bg} flex items-center gap-1.5`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                            {complaint.status}
                           </span>
                         </div>
 
+                        {/* Title & Description */}
+                        <div>
+                          <h3 className="font-extrabold text-sm sm:text-base text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
+                            {complaint.title}
+                          </h3>
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                            {complaint.description}
+                          </p>
+                        </div>
+
+                        {/* Location, Student info & Assigned team */}
+                        <div className="space-y-1.5 pt-1 text-[11px] text-slate-500">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1 truncate">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{complaint.location || "Campus Grounds"}</span>
+                            </span>
+                            <span className="text-slate-400">
+                              {new Date(complaint.createdAt).toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 text-[10px] bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <span className="flex items-center gap-1 truncate">
+                              <User className="w-3 h-3 text-blue-500" />
+                              <strong className="text-slate-700 truncate">
+                                {complaint.student?.name || "Student"}
+                              </strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-indigo-600 font-semibold truncate">
+                              <Building className="w-3 h-3" />
+                              <span className="truncate">{complaint.assignedTo || "Unassigned"}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                    </div>
-                  </div>
+                      {/* Action Bar */}
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-[11px] font-semibold text-slate-400">
+                          {complaint.timeline?.length || 1} update(s)
+                        </span>
 
-                  {/* STATUS CONTROL */}
-                  <div className="status-control">
-
-                    <span>
-                      Update status
-                    </span>
-
-                    <div className="status-buttons">
-
-                      {statuses.map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          className={
-                            complaint.status === status
-                              ? `status-button active-${status
-                                  .toLowerCase()
-                                  .replace(" ", "-")}`
-                              : "status-button"
-                          }
-                          disabled={
-                            updating ===
-                            complaint._id
-                          }
-                          onClick={() =>
-                            updateStatus(
-                              complaint._id,
-                              status
-                            )
-                          }
-                        >
-                          {status === "Pending" &&
-                            "⏳ "}
-
-                          {status === "In Progress" &&
-                            "🔧 "}
-
-                          {status === "Resolved" &&
-                            "✓ "}
-
-                          {status}
-                        </button>
-                      ))}
-
-                    </div>
-
-                  </div>
-
-                </article>
-              ))
+                        <span className="text-xs font-bold text-indigo-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                          Review & Update <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             )}
-
           </div>
-
-        </section>
-
-        {/* FOOTER */}
-        <footer className="admin-footer">
-
-          <div>
-            <strong>
-              SmartCampus
-            </strong>
-
-            <span>
-              Campus Complaint Management System
-            </span>
-          </div>
-
-          <span>
-            Admin Control Center • 2026
-          </span>
-
-        </footer>
-
-      </div>
-
-      {/* STYLES */}
-      <style jsx>{`
-        .admin-page {
-          min-height: 100vh;
-          background:
-            radial-gradient(
-              circle at 90% 5%,
-              rgba(79, 70, 229, 0.1),
-              transparent 25%
-            ),
-            #f5f7fb;
-          color: #111827;
-          padding: 35px 20px 60px;
-        }
-
-        .admin-container {
-          max-width: 1180px;
-          margin: 0 auto;
-        }
-
-        .admin-header {
-          background: white;
-          border: 1px solid #e8ebf2;
-          border-radius: 24px;
-          padding: 28px 32px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 20px;
-          box-shadow: 0 15px 40px rgba(25, 35, 60, 0.06);
-        }
-
-        .admin-brand {
-          color: #315bea;
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 2px;
-        }
-
-        .admin-header h1 {
-          margin: 5px 0;
-          font-size: 32px;
-          letter-spacing: -1px;
-        }
-
-        .admin-header p {
-          margin: 0;
-          color: #718096;
-        }
-
-        .admin-header-actions {
-          display: flex;
-          gap: 10px;
-        }
-
-        .refresh-button,
-        .logout-button {
-          border: 0;
-          border-radius: 12px;
-          padding: 12px 18px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .refresh-button {
-          background: #eef3ff;
-          color: #315bea;
-        }
-
-        .logout-button {
-          background: #ffe8e8;
-          color: #dc2626;
-        }
-
-        .refresh-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .admin-error {
-          margin-top: 18px;
-          background: #fff1f2;
-          color: #be123c;
-          border: 1px solid #fecdd3;
-          border-radius: 14px;
-          padding: 14px 18px;
-          line-height: 1.5;
-        }
-
-        .admin-hero {
-          margin-top: 24px;
-          border-radius: 26px;
-          padding: 38px 42px;
-          color: white;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background:
-            radial-gradient(
-              circle at 85% 30%,
-              rgba(255,255,255,.18),
-              transparent 25%
-            ),
-            linear-gradient(
-              135deg,
-              #2563eb,
-              #4f46e5,
-              #7c3aed
-            );
-          box-shadow:
-            0 25px 50px rgba(67, 79, 220, 0.2);
-        }
-
-        .admin-eyebrow {
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 1.8px;
-          opacity: .9;
-        }
-
-        .admin-hero h2 {
-          font-size: 42px;
-          line-height: 1.05;
-          letter-spacing: -2px;
-          margin: 14px 0;
-        }
-
-        .admin-hero h2 span {
-          color: #dbeafe;
-        }
-
-        .admin-hero p {
-          max-width: 580px;
-          line-height: 1.6;
-          opacity: .9;
-          margin: 0;
-        }
-
-        .admin-hero-icon {
-          width: 100px;
-          height: 100px;
-          border-radius: 28px;
-          background: rgba(255,255,255,.14);
-          border: 1px solid rgba(255,255,255,.25);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 44px;
-          backdrop-filter: blur(10px);
-        }
-
-        .admin-stats {
-          margin-top: 22px;
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-        }
-
-        .admin-stat-card {
-          background: white;
-          border: 1px solid #e8ebf2;
-          border-radius: 20px;
-          padding: 22px;
-          box-shadow:
-            0 12px 30px rgba(25, 35, 60, .04);
-        }
-
-        .stat-top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          color: #64748b;
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        .stat-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 19px;
-          background: #f3f6fb;
-        }
-
-        .admin-stat-card strong {
-          display: block;
-          font-size: 34px;
-          margin-top: 18px;
-        }
-
-        .admin-stat-card small {
-          display: block;
-          margin-top: 3px;
-          color: #94a3b8;
-        }
-
-        .admin-management {
-          margin-top: 24px;
-          background: white;
-          border: 1px solid #e8ebf2;
-          border-radius: 26px;
-          padding: 30px;
-          box-shadow:
-            0 15px 40px rgba(25, 35, 60, .05);
-        }
-
-        .management-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 20px;
-        }
-
-        .small-label {
-          color: #315bea;
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 1.5px;
-        }
-
-        .management-header h2 {
-          font-size: 26px;
-          margin: 6px 0;
-        }
-
-        .management-header p {
-          margin: 0;
-          color: #718096;
-        }
-
-        .complaint-count {
-          background: #f3f6fb;
-          padding: 10px 14px;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 800;
-          color: #475569;
-        }
-
-        .admin-controls {
-          display: flex;
-          gap: 12px;
-          margin: 26px 0;
-        }
-
-        .search-box {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          border: 1px solid #dfe5ee;
-          border-radius: 13px;
-          padding: 0 14px;
-          background: #fbfcfe;
-        }
-
-        .search-box input {
-          width: 100%;
-          border: 0;
-          outline: 0;
-          background: transparent;
-          padding: 13px 0;
-          font-size: 14px;
-        }
-
-        .filter-select {
-          border: 1px solid #dfe5ee;
-          border-radius: 13px;
-          padding: 0 14px;
-          background: white;
-          color: #334155;
-          font-weight: 700;
-          outline: 0;
-        }
-
-        .admin-list {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .admin-complaint-card {
-          border: 1px solid #e6eaf1;
-          border-radius: 20px;
-          overflow: hidden;
-          transition: .2s ease;
-        }
-
-        .admin-complaint-card:hover {
-          border-color: #cbd5e1;
-          box-shadow:
-            0 15px 30px rgba(15, 23, 42, .05);
-        }
-
-        .complaint-main {
-          display: flex;
-          gap: 18px;
-          padding: 22px;
-        }
-
-        .complaint-icon {
-          width: 52px;
-          height: 52px;
-          flex-shrink: 0;
-          border-radius: 15px;
-          background: #f3f6fb;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 25px;
-        }
-
-        .complaint-content {
-          flex: 1;
-        }
-
-        .complaint-title-row {
-          display: flex;
-          justify-content: space-between;
-          gap: 20px;
-        }
-
-        .complaint-title-row h3 {
-          margin: 0;
-          font-size: 18px;
-        }
-
-        .complaint-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-top: 7px;
-          color: #94a3b8;
-          font-size: 12px;
-        }
-
-        .complaint-description {
-          color: #64748b;
-          line-height: 1.6;
-          margin: 15px 0;
-        }
-
-        .student-info {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .student-avatar {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          background:
-            linear-gradient(
-              135deg,
-              #315bea,
-              #7c3aed
-            );
-          color: white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 900;
-        }
-
-        .student-info strong,
-        .student-info span {
-          display: block;
-        }
-
-        .student-info strong {
-          font-size: 13px;
-        }
-
-        .student-info span {
-          color: #94a3b8;
-          font-size: 11px;
-          margin-top: 2px;
-        }
-
-        .admin-status {
-          height: fit-content;
-          white-space: nowrap;
-          padding: 8px 12px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 900;
-        }
-
-        .admin-status.pending {
-          color: #c26b00;
-          background: #fff4df;
-        }
-
-        .admin-status.progress {
-          color: #2563eb;
-          background: #eaf1ff;
-        }
-
-        .admin-status.resolved {
-          color: #16803c;
-          background: #e8f8ed;
-        }
-
-        .status-control {
-          border-top: 1px solid #edf0f5;
-          background: #fafbfc;
-          padding: 14px 22px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 15px;
-        }
-
-        .status-control > span {
-          color: #64748b;
-          font-size: 12px;
-          font-weight: 800;
-        }
-
-        .status-buttons {
-          display: flex;
-          gap: 8px;
-        }
-
-        .status-button {
-          border: 1px solid #dfe5ee;
-          background: white;
-          color: #64748b;
-          border-radius: 10px;
-          padding: 8px 11px;
-          cursor: pointer;
-          font-size: 11px;
-          font-weight: 800;
-        }
-
-        .status-button:hover:not(:disabled) {
-          border-color: #315bea;
-          color: #315bea;
-        }
-
-        .status-button:disabled {
-          opacity: .5;
-          cursor: not-allowed;
-        }
-
-        .status-button.active-pending {
-          background: #fff4df;
-          border-color: #ffd58a;
-          color: #c26b00;
-        }
-
-        .status-button.active-in-progress {
-          background: #eaf1ff;
-          border-color: #b8cdfd;
-          color: #2563eb;
-        }
-
-        .status-button.active-resolved {
-          background: #e8f8ed;
-          border-color: #a9e4bd;
-          color: #16803c;
-        }
-
-        .admin-empty {
-          padding: 70px 20px;
-          text-align: center;
-          color: #64748b;
-        }
-
-        .empty-icon {
-          font-size: 42px;
-        }
-
-        .admin-empty h3 {
-          color: #1e293b;
-          margin-bottom: 5px;
-        }
-
-        .loading-spinner {
-          width: 38px;
-          height: 38px;
-          border: 4px solid #e5e7eb;
-          border-top-color: #315bea;
-          border-radius: 50%;
-          margin: 0 auto 15px;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        .admin-footer {
-          padding: 28px 5px 0;
-          display: flex;
-          justify-content: space-between;
-          color: #94a3b8;
-          font-size: 12px;
-        }
-
-        .admin-footer strong,
-        .admin-footer span {
-          display: block;
-        }
-
-        .admin-footer strong {
-          color: #334155;
-          margin-bottom: 3px;
-        }
-
-        @media (max-width: 900px) {
-          .admin-stats {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .admin-hero h2 {
-            font-size: 34px;
-          }
-        }
-
-        @media (max-width: 650px) {
-          .admin-page {
-            padding: 15px 10px 40px;
-          }
-
-          .admin-header,
-          .management-header,
-          .admin-controls,
-          .status-control,
-          .admin-footer {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .admin-header-actions {
-            width: 100%;
-          }
-
-          .admin-header-actions button {
-            flex: 1;
-          }
-
-          .admin-hero {
-            padding: 28px;
-          }
-
-          .admin-hero-icon {
-            display: none;
-          }
-
-          .admin-stats {
-            grid-template-columns: 1fr;
-          }
-
-          .admin-management {
-            padding: 18px;
-          }
-
-          .complaint-main {
-            padding: 16px;
-          }
-
-          .complaint-title-row {
-            flex-direction: column;
-          }
-
-          .status-buttons {
-            flex-wrap: wrap;
-          }
-        }
-      `}</style>
-    </main>
+        )}
+      </main>
+
+      <MobileBottomNav />
+
+      {/* Filter Bottom Sheet */}
+      <FilterBottomSheet
+        isOpen={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        status={statusFilter}
+        setStatus={setStatusFilter}
+        category={categoryFilter}
+        setCategory={setCategoryFilter}
+        priority={priorityFilter}
+        setPriority={setPriorityFilter}
+        onReset={handleResetFilters}
+      />
+
+      {/* Complaint Detail & Admin Action Modal */}
+      <ComplaintDetailModal
+        complaint={selectedComplaint}
+        isOpen={!!selectedComplaint}
+        onClose={() => setSelectedComplaint(null)}
+        isAdmin={true}
+        onStatusUpdated={(updated) => {
+          setComplaints((prev) =>
+            prev.map((c) => (c._id === updated._id ? updated : c))
+          );
+          setSelectedComplaint(updated);
+          // reload statistics
+          api.admin.getStats().then((res) => {
+            if (res.success) setStats(res.stats);
+          });
+        }}
+      />
+    </div>
   );
 }

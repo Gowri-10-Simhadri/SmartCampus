@@ -1,540 +1,398 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-interface User {
-  name: string;
-  email: string;
-  role: string;
-}
-
-interface Complaint {
-  _id: string;
-  title: string;
-  description: string;
-  category: string;
-  status: string;
-  createdAt: string;
-}
+import Link from "next/link";
+import Navbar from "../../components/Navbar";
+import MobileBottomNav from "../../components/MobileBottomNav";
+import ComplaintDetailModal, { ComplaintDetail } from "../../components/ComplaintDetailModal";
+import { useAuth } from "../../context/AuthContext";
+import { api } from "../../lib/api";
+import {
+  PlusCircle,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ChevronRight,
+  MapPin,
+  Tag,
+  Sparkles,
+  ArrowRight,
+  TrendingUp,
+  Inbox,
+  RefreshCw,
+  Search,
+  Filter,
+} from "lucide-react";
 
 export default function Dashboard() {
   const router = useRouter();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [complaints, setComplaints] = useState<ComplaintDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedComplaint, setSelectedComplaint] = useState<ComplaintDetail | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const savedUser = localStorage.getItem("user");
-
-    if (!token || !savedUser) {
+    if (!isLoading && !isAuthenticated) {
       router.push("/login");
       return;
     }
 
+    if (isAuthenticated) {
+      loadComplaints();
+    }
+  }, [isLoading, isAuthenticated, router]);
+
+  const loadComplaints = async () => {
     try {
-      setUser(JSON.parse(savedUser));
-    } catch (error) {
-      console.error("Failed to read saved user:", error);
-      localStorage.removeItem("user");
-      router.push("/login");
-      return;
+      setLoading(true);
+      const res = await api.complaints.getMy();
+      if (res.success) {
+        setComplaints(res.complaints || []);
+      }
+    } catch (err) {
+      console.error("Failed to load complaints:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    fetch("http://localhost:5000/api/complaints/my", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setComplaints(data.complaints || []);
-        } else {
-          console.error("Failed to load complaints:", data.message);
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to load complaints:", error);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [router]);
-
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
   };
 
-  const pending = complaints.filter(
-    (complaint) => complaint.status === "Pending"
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadComplaints();
+  };
+
+  const pendingCount = complaints.filter(
+    (c) => c.status === "Pending" || c.status === "Under Review"
   ).length;
 
-  const inProgress = complaints.filter(
-    (complaint) => complaint.status === "In Progress"
+  const inProgressCount = complaints.filter(
+    (c) => c.status === "In Progress"
   ).length;
 
-  const resolved = complaints.filter(
-    (complaint) => complaint.status === "Resolved"
+  const resolvedCount = complaints.filter(
+    (c) => c.status === "Resolved"
   ).length;
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Resolved":
+        return {
+          bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          dot: "bg-emerald-500",
+        };
+      case "In Progress":
+        return {
+          bg: "bg-blue-50 text-blue-700 border-blue-200",
+          dot: "bg-blue-500",
+        };
+      case "Under Review":
+        return {
+          bg: "bg-purple-50 text-purple-700 border-purple-200",
+          dot: "bg-purple-500",
+        };
+      case "Rejected":
+        return {
+          bg: "bg-rose-50 text-rose-700 border-rose-200",
+          dot: "bg-rose-500",
+        };
+      default:
+        return {
+          bg: "bg-amber-50 text-amber-700 border-amber-200",
+          dot: "bg-amber-500",
+        };
+    }
+  };
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f6f8fc",
-        padding: "30px",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-        }}
-      >
-        {/* Header */}
-        <header
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "22px 28px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            boxShadow: "0 8px 30px rgba(0,0,0,0.05)",
-            marginBottom: "30px",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#2563eb",
-                letterSpacing: "1px",
-                marginBottom: "5px",
-              }}
-            >
-              SMARTCAMPUS
-            </div>
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-24 md:pb-12 text-slate-900 selection:bg-blue-600 selection:text-white">
+      <Navbar />
 
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "25px",
-              }}
-            >
-              Student Dashboard
-            </h1>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "15px",
-            }}
-          >
-            <div style={{ textAlign: "right" }}>
-              <strong>{user?.name}</strong>
-
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#64748b",
-                }}
-              >
-                {user?.email}
-              </div>
-            </div>
-
-            <button
-              onClick={logout}
-              style={{
-                border: "none",
-                background: "#fee2e2",
-                color: "#dc2626",
-                padding: "10px 16px",
-                borderRadius: "10px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Logout
-            </button>
-          </div>
-        </header>
-
-        {/* Welcome Section */}
-        <section
-          style={{
-            background: "linear-gradient(135deg, #2563eb, #4f46e5)",
-            color: "white",
-            borderRadius: "22px",
-            padding: "35px",
-            marginBottom: "25px",
-          }}
-        >
-          <p
-            style={{
-              margin: "0 0 8px",
-              opacity: 0.85,
-            }}
-          >
-            Welcome back 👋
-          </p>
-
-          <h2
-            style={{
-              margin: "0 0 10px",
-              fontSize: "32px",
-            }}
-          >
-            {user?.name}
-          </h2>
-
-          <p
-            style={{
-              margin: 0,
-              opacity: 0.9,
-            }}
-          >
-            Track your campus complaints and stay updated on their progress.
-          </p>
-        </section>
-
-        {/* Statistics */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "18px",
-            marginBottom: "25px",
-          }}
-        >
-          <StatCard
-            title="Total Complaints"
-            value={complaints.length}
-            icon="📋"
-          />
-
-          <StatCard
-            title="Pending"
-            value={pending}
-            icon="⏳"
-          />
-
-          <StatCard
-            title="In Progress"
-            value={inProgress}
-            icon="🔧"
-          />
-
-          <StatCard
-            title="Resolved"
-            value={resolved}
-            icon="✅"
-          />
-        </div>
-
-        {/* Action Cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "20px",
-            marginBottom: "25px",
-          }}
-        >
-          {/* Submit Complaint */}
-
-          <a
-            href="/complaints/new"
-            style={{
-              display: "block",
-              padding: "25px",
-              borderRadius: "18px",
-              background: "white",
-              textAlign: "left",
-              textDecoration: "none",
-              color: "#0f172a",
-              cursor: "pointer",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.05)",
-              transition: "all 0.2s ease",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "28px",
-                marginBottom: "10px",
-              }}
-            >
-              📝
-            </div>
-
-            <strong
-              style={{
-                fontSize: "19px",
-              }}
-            >
-              Submit a Complaint
-            </strong>
-
-            <p
-              style={{
-                color: "#64748b",
-                marginBottom: 0,
-              }}
-            >
-              Report a new problem on campus.
-            </p>
-          </a>
-
-          {/* View All Complaints */}
-
-          <a
-            href="/complaints"
-            style={{
-              display: "block",
-              padding: "25px",
-              borderRadius: "18px",
-              background: "white",
-              textAlign: "left",
-              textDecoration: "none",
-              color: "#0f172a",
-              cursor: "pointer",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.05)",
-              transition: "all 0.2s ease",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "28px",
-                marginBottom: "10px",
-              }}
-            >
-              📊
-            </div>
-
-            <strong
-              style={{
-                fontSize: "19px",
-              }}
-            >
-              View All Complaints
-            </strong>
-
-            <p
-              style={{
-                color: "#64748b",
-                marginBottom: 0,
-              }}
-            >
-              Track all your submitted complaints.
-            </p>
-          </a>
-        </div>
-
-        {/* Recent Complaints */}
-        <section
-          style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "28px",
-            boxShadow: "0 8px 30px rgba(0,0,0,0.05)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: "20px",
-            }}
-          >
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Welcome Banner Card */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 sm:p-8 text-white shadow-xl shadow-blue-500/15">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 style={{ margin: 0 }}>
-                Recent Complaints
-              </h2>
-
-              <p
-                style={{
-                  margin: "5px 0 0",
-                  color: "#64748b",
-                }}
-              >
-                Your latest campus reports
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-[11px] font-bold tracking-wide uppercase text-blue-100 mb-2">
+                <Sparkles className="w-3.5 h-3.5" />
+                Student Portal
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+                Good day, {user?.name?.split(" ")[0] || "Student"} 👋
+              </h1>
+              <p className="text-xs sm:text-sm text-blue-100/90 mt-1 max-w-md">
+                Monitor live maintenance tickets and report any campus issues in real time.
               </p>
             </div>
 
-            <a
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="p-3 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white backdrop-blur-md transition-all touch-manipulation"
+                title="Refresh complaints"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+              </button>
+
+              <Link
+                href="/complaints/new"
+                className="px-5 py-3 rounded-2xl bg-white text-blue-600 hover:bg-blue-50 font-bold text-xs sm:text-sm shadow-md active:scale-95 transition-all touch-manipulation flex items-center gap-2"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Report Issue</span>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* 3D KPI Metrics Cards */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 perspective-container">
+          {/* Card 1: Total */}
+          <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Total Filed
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm">
+                📋
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">
+              {loading ? "--" : complaints.length}
+            </div>
+            <span className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+              <span>Lifetime tickets</span>
+            </span>
+          </div>
+
+          {/* Card 2: Pending */}
+          <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-amber-200/80 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">
+                Pending
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm">
+                ⏳
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-amber-600">
+              {loading ? "--" : pendingCount}
+            </div>
+            <span className="text-[10px] text-amber-600/80 mt-1 flex items-center gap-1">
+              <span>Awaiting review</span>
+            </span>
+          </div>
+
+          {/* Card 3: In Progress */}
+          <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-blue-200/80 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">
+                In Progress
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+                🔧
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-blue-600">
+              {loading ? "--" : inProgressCount}
+            </div>
+            <span className="text-[10px] text-blue-600/80 mt-1 flex items-center gap-1">
+              <span>Technician active</span>
+            </span>
+          </div>
+
+          {/* Card 4: Resolved */}
+          <div className="perspective-card-3d bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200/80 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
+                Resolved
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                ✅
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-600">
+              {loading ? "--" : resolvedCount}
+            </div>
+            <span className="text-[10px] text-emerald-600/80 mt-1 flex items-center gap-1">
+              <span>Successfully closed</span>
+            </span>
+          </div>
+        </section>
+
+        {/* Quick Action Shortcuts */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <Link
+            href="/complaints/new"
+            className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-md transition-all flex items-center justify-between group touch-manipulation active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform">
+                ✍️
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-blue-600 transition-colors">
+                  Report New Campus Issue
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Electrical, water, WiFi, hygiene, or classroom
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+          </Link>
+
+          <Link
+            href="/complaints"
+            className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/80 hover:border-indigo-300 hover:shadow-md transition-all flex items-center justify-between group touch-manipulation active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform">
+                🗂️
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                  View Complaint History
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Search, filter, and track all your past tickets
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+          </Link>
+        </section>
+
+        {/* Recent Complaints Section */}
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-slate-900">
+                Recent Campus Reports
+              </h2>
+              <p className="text-xs text-slate-500">
+                Tap on any ticket to view its full live timeline
+              </p>
+            </div>
+
+            <Link
               href="/complaints"
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "#2563eb",
-                fontWeight: 600,
-                textDecoration: "none",
-                cursor: "pointer",
-              }}
+              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 active:scale-95 transition-all"
             >
-              View all →
-            </a>
+              <span>View all ({complaints.length})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
           {loading ? (
-            <p style={{ color: "#64748b" }}>
-              Loading complaints...
-            </p>
+            <div className="space-y-3 py-6">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="h-18 bg-slate-100/70 rounded-2xl animate-pulse"
+                />
+              ))}
+            </div>
           ) : complaints.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px",
-                color: "#64748b",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "40px",
-                }}
-              >
+            <div className="text-center py-12 px-4 space-y-3">
+              <div className="w-14 h-14 rounded-3xl bg-blue-50 text-blue-500 flex items-center justify-center mx-auto text-2xl">
                 📭
               </div>
-
-              <h3>No complaints yet</h3>
-
-              <p>
-                You haven't submitted any campus complaints.
+              <h3 className="font-bold text-sm text-slate-800">
+                No complaints submitted yet
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Everything looks smooth on campus! If something is broken, report it now to alert facility teams.
               </p>
+              <Link
+                href="/complaints/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md hover:bg-blue-700 transition-colors"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Submit First Complaint
+              </Link>
             </div>
           ) : (
-            complaints.slice(0, 5).map((complaint) => (
-              <div
-                key={complaint._id}
-                style={{
-                  padding: "18px 0",
-                  borderTop: "1px solid #eef2f7",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "20px",
-                }}
-              >
-                <div>
-                  <strong>
-                    {complaint.title}
-                  </strong>
-
+            <div className="divide-y divide-slate-100">
+              {complaints.slice(0, 5).map((complaint) => {
+                const badge = getStatusBadge(complaint.status);
+                return (
                   <div
-                    style={{
-                      fontSize: "13px",
-                      color: "#64748b",
-                      marginTop: "5px",
-                    }}
+                    key={complaint._id}
+                    onClick={() => setSelectedComplaint(complaint)}
+                    className="py-3.5 sm:py-4 flex items-center justify-between gap-3 group cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 rounded-2xl transition-colors touch-manipulation"
                   >
-                    {complaint.category}
-                  </div>
-                </div>
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-base font-bold group-hover:scale-105 transition-transform">
+                        {complaint.category === "Electrical"
+                          ? "💡"
+                          : complaint.category === "Water"
+                          ? "💧"
+                          : complaint.category === "Internet"
+                          ? "🌐"
+                          : complaint.category === "Cleanliness"
+                          ? "🧹"
+                          : complaint.category === "Security"
+                          ? "🛡️"
+                          : "📋"}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-mono font-bold text-slate-400">
+                            #{complaint._id.slice(-6).toUpperCase()}
+                          </span>
+                          <span className="text-[10px] font-medium text-slate-500">
+                            • {complaint.category}
+                          </span>
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                          {complaint.title}
+                        </h4>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                          <span className="flex items-center gap-1 truncate max-w-[180px]">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            {complaint.location || "Campus"}
+                          </span>
+                          <span>•</span>
+                          <span>
+                            {new Date(complaint.createdAt).toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                <StatusBadge
-                  status={complaint.status}
-                />
-              </div>
-            ))
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full border ${badge.bg} flex items-center gap-1.5`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                        {complaint.status}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition-colors hidden sm:inline" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
-      </div>
-    </main>
-  );
-}
+      </main>
 
-/* Statistics Card */
+      <MobileBottomNav />
 
-function StatCard({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: number;
-  icon: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "white",
-        padding: "22px",
-        borderRadius: "18px",
-        boxShadow: "0 8px 30px rgba(0,0,0,0.05)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "25px",
-          marginBottom: "10px",
-        }}
-      >
-        {icon}
-      </div>
-
-      <div
-        style={{
-          fontSize: "30px",
-          fontWeight: 700,
-        }}
-      >
-        {value}
-      </div>
-
-      <div
-        style={{
-          color: "#64748b",
-          fontSize: "14px",
-        }}
-      >
-        {title}
-      </div>
+      {/* Interactive Detail Modal */}
+      <ComplaintDetailModal
+        complaint={selectedComplaint}
+        isOpen={!!selectedComplaint}
+        onClose={() => setSelectedComplaint(null)}
+      />
     </div>
-  );
-}
-
-/* Status Badge */
-
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  let background = "#fef3c7";
-  let color = "#92400e";
-
-  if (status === "In Progress") {
-    background = "#dbeafe";
-    color = "#1d4ed8";
-  }
-
-  if (status === "Resolved") {
-    background = "#dcfce7";
-    color = "#166534";
-  }
-
-  return (
-    <span
-      style={{
-        background,
-        color,
-        padding: "7px 12px",
-        borderRadius: "999px",
-        fontSize: "12px",
-        fontWeight: 700,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {status}
-    </span>
   );
 }

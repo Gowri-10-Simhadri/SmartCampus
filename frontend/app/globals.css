@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
 
 * {
   box-sizing: border-box;
@@ -1021,5 +1022,101 @@ footer {
 
   .complaint-form-card {
     padding: 25px;
+  }
+}
+
+/* ==========================================
+   CREATIVE 3D UI & MOBILE-FIRST ENHANCEMENTS
+========================================== */
+
+/* 3D Perspective Containers */
+.perspective-container {
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
+.perspective-card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .perspective-card-3d:hover {
+    transform: translateY(-4px) rotateX(2deg) rotateY(-2deg);
+    box-shadow: 0 20px 40px -15px rgba(37, 99, 235, 0.15), 0 0 20px -5px rgba(99, 102, 241, 0.1);
+  }
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.glass-card-dark {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+/* 3D Floating Animations */
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes floatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1deg);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: floatReverse 7s ease-in-out infinite;
+}
+
+/* Glowing Status Dots */
+.status-glow-pending {
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+}
+.status-glow-progress {
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+}
+.status-glow-resolved {
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+}
+
+/* Mobile Safe Areas */
+.safe-area-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+/* Touch Targets Optimization */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* Respect Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
