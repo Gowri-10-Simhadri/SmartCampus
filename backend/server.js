@@ -20,6 +20,7 @@ const allowedOrigins = [
   "http://localhost:3001",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
+  "https://smartcampus-frontend-xd7u.onrender.com",
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
@@ -30,6 +31,7 @@ const corsOptions = {
 
     const isAllowed =
       allowedOrigins.includes(origin) ||
+      /\.onrender\.com$/.test(origin) ||
       /\.vercel\.app$/.test(origin) ||
       process.env.NODE_ENV !== "production";
 

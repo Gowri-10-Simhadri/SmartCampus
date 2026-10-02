@@ -1,6 +1,29 @@
 // Centralized API configuration and client
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:5000";
+export function getApiBaseUrl(): string {
+  // 1. Explicit NEXT_PUBLIC_API_URL takes precedence
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+  }
+
+  // 2. Browser runtime: dynamically detect if we are running on deployed host
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (
+      host !== "localhost" &&
+      host !== "127.0.0.1" &&
+      !host.startsWith("192.168.")
+    ) {
+      return "https://smartcampus-backend-evdb.onrender.com";
+    }
+  }
+
+  // 3. In production server builds, target production backend by default
+  if (process.env.NODE_ENV === "production") {
+    return "https://smartcampus-backend-evdb.onrender.com";
+  }
+
+  return "http://localhost:5000";
+}
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -10,7 +33,9 @@ export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<{ success: boolean; data?: T; message?: string; [key: string]: any }> {
-  const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
 
   const token =
     options.token !== undefined
@@ -63,7 +88,9 @@ export async function apiRequest<T = any>(
 
 // API methods
 export const api = {
-  baseUrl: API_BASE_URL,
+  get baseUrl() {
+    return getApiBaseUrl();
+  },
 
   auth: {
     login: (credentials: { email: string; password: string }) =>
