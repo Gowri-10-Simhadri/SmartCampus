@@ -11,12 +11,12 @@ import {
   User as UserIcon,
   Shield,
   Layers,
-  Sparkles,
   ChevronDown,
   X,
-  CheckCircle,
+  Menu,
   Clock,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -29,12 +29,19 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
       loadNotificationCount();
     }
   }, [isAuthenticated, pathname]);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setUserMenuOpen(false);
+  }, [pathname]);
 
   const loadNotificationCount = async () => {
     try {
@@ -51,6 +58,7 @@ export default function Navbar() {
   const handleOpenNotifications = async () => {
     setNotificationsOpen(true);
     setUserMenuOpen(false);
+    setMobileMenuOpen(false);
     setLoadingNotifs(true);
     try {
       const res = await api.complaints.getNotifications();
@@ -75,35 +83,33 @@ export default function Navbar() {
     }
   };
 
-  const isHome = pathname === "/";
-
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-slate-200/80 transition-all duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          {/* Brand */}
+      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-200/80 transition-all duration-200">
+        <div className="content-container h-20 flex items-center justify-between">
+          {/* Brand Logo & Title */}
           <Link
             href={isAuthenticated ? (isAdmin ? "/admin" : "/dashboard") : "/"}
-            className="flex items-center gap-3 group"
+            className="flex items-center gap-3.5 group select-none"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-xl shadow-md shadow-blue-500/20 group-hover:scale-105 group-active:scale-95 transition-transform">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-500/25 group-hover:scale-105 group-active:scale-95 transition-transform">
               S
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-slate-900 tracking-tight text-base sm:text-lg">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-slate-900 tracking-tight text-lg sm:text-xl">
                   SmartCampus
                 </span>
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-              <p className="text-[10px] font-medium text-slate-500 tracking-wider uppercase -mt-0.5">
+              <p className="text-[11px] font-semibold text-slate-400 tracking-wider uppercase">
                 {isAdmin ? "Admin Console" : "Campus Portal"}
               </p>
             </div>
           </Link>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+          {/* Desktop Center Navigation Links */}
+          <nav className="hidden md:flex items-center gap-8 text-[15px] font-medium text-slate-600">
             {isAuthenticated ? (
               <>
                 <Link
@@ -129,7 +135,7 @@ export default function Navbar() {
                 {!isAdmin && (
                   <Link
                     href="/complaints/new"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 transition-colors"
                   >
                     + Report Issue
                   </Link>
@@ -137,13 +143,22 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link href="/#features" className="hover:text-blue-600 transition-colors">
+                <Link
+                  href="/#features"
+                  className="hover:text-blue-600 transition-colors py-1"
+                >
                   Features
                 </Link>
-                <Link href="/#how-it-works" className="hover:text-blue-600 transition-colors">
+                <Link
+                  href="/#how-it-works"
+                  className="hover:text-blue-600 transition-colors py-1"
+                >
                   How it works
                 </Link>
-                <Link href="/#about" className="hover:text-blue-600 transition-colors">
+                <Link
+                  href="/#about"
+                  className="hover:text-blue-600 transition-colors py-1"
+                >
                   About
                 </Link>
               </>
@@ -174,15 +189,15 @@ export default function Navbar() {
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 transition-all touch-manipulation"
+                    className="flex items-center gap-2.5 p-1.5 pr-3 rounded-2xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 transition-all touch-manipulation"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow-sm">
                       {user?.name?.[0]?.toUpperCase() || "U"}
                     </div>
                     <span className="hidden sm:inline text-xs font-semibold text-slate-800 max-w-[110px] truncate">
                       {user?.name?.split(" ")[0]}
                     </span>
-                    <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 hidden sm:inline">
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 hidden sm:inline">
                       {user?.role}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -191,25 +206,25 @@ export default function Navbar() {
                   {/* Dropdown Menu */}
                   {userMenuOpen && (
                     <div
-                      className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                      className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
                       onClick={() => setUserMenuOpen(false)}
                     >
-                      <div className="px-4 py-2 border-b border-slate-100">
+                      <div className="px-4 py-3 border-b border-slate-100">
                         <p className="text-sm font-bold text-slate-900 truncate">
                           {user?.name}
                         </p>
-                        <p className="text-xs text-slate-500 truncate">
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
                           {user?.email}
                         </p>
-                        <span className="inline-block mt-1 text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        <span className="inline-block mt-2 text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
                           {user?.role === "admin" ? "🛡️ Administrator" : "🎓 Student"}
                         </span>
                       </div>
 
-                      <div className="py-1">
+                      <div className="py-1.5">
                         <Link
                           href="/profile"
-                          className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                         >
                           <UserIcon className="w-4 h-4 text-slate-400" />
                           Profile & Settings
@@ -217,7 +232,7 @@ export default function Navbar() {
                         {isAdmin && (
                           <Link
                             href="/admin"
-                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                           >
                             <Shield className="w-4 h-4 text-blue-600" />
                             Admin Console
@@ -225,18 +240,18 @@ export default function Navbar() {
                         )}
                         <Link
                           href="/complaints"
-                          className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                         >
                           <Layers className="w-4 h-4 text-slate-400" />
                           Complaint History
                         </Link>
                       </div>
 
-                      <div className="pt-1 border-t border-slate-100">
+                      <div className="pt-1.5 border-t border-slate-100">
                         <button
                           type="button"
                           onClick={logout}
-                          className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 font-medium transition-colors"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 font-medium transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
                           Log out
@@ -247,26 +262,93 @@ export default function Navbar() {
                 </div>
               </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/login"
-                  className="px-3.5 py-2 text-sm font-semibold text-slate-700 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition-colors"
-                >
-                  Log in
-                </Link>
-                <Link
-                  href="/register"
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm shadow-blue-500/20 active:scale-95 transition-all"
-                >
-                  Register
-                </Link>
-              </div>
+              <>
+                {/* Desktop Auth Buttons */}
+                <div className="hidden sm:flex items-center gap-3">
+                  <Link
+                    href="/login"
+                    className="px-4 py-2.5 text-[15px] font-semibold text-slate-700 hover:text-blue-600 rounded-xl hover:bg-slate-100/80 transition-colors"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="px-5 py-2.5 text-[15px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+                  >
+                    Register
+                  </Link>
+                </div>
+
+                {/* Mobile Hamburger Menu Toggle */}
+                <div className="flex sm:hidden items-center gap-2">
+                  <Link
+                    href="/login"
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600"
+                  >
+                    Log in
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                    className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
+                    aria-label="Toggle navigation menu"
+                  >
+                    {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
+
+        {/* Mobile Dropdown Navigation for Unauthenticated Visitors */}
+        {!isAuthenticated && mobileMenuOpen && (
+          <div className="sm:hidden border-t border-slate-200/80 bg-white/98 backdrop-blur-md px-4 py-5 space-y-4 animate-in slide-in-from-top-2 duration-150 shadow-xl">
+            <div className="flex flex-col space-y-3 font-medium text-slate-700 text-base">
+              <Link
+                href="/#features"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-2 py-1.5 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors"
+              >
+                Features
+              </Link>
+              <Link
+                href="/#how-it-works"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-2 py-1.5 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors"
+              >
+                How it works
+              </Link>
+              <Link
+                href="/#about"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-2 py-1.5 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors"
+              >
+                About
+              </Link>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex flex-col gap-2.5">
+              <Link
+                href="/register"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-center text-sm shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+              >
+                Create Student Account
+              </Link>
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-center text-sm transition-all"
+              >
+                Log In to Existing Account
+              </Link>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* Notifications Drawer / Bottom Sheet */}
+      {/* Notifications Drawer */}
       {notificationsOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end">
           <div
